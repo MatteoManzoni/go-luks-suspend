@@ -65,7 +65,7 @@ func luksResume(cd *g.Cryptdevice, stdin io.Reader) error {
 		}
 	}
 
-	printPassphrasePrompt(cd)
+	//printPassphrasePrompt(cd)  non è più necessario queso messaggio
 	return cd.Resume(stdin)
 }
 

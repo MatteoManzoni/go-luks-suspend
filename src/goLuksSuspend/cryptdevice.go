@@ -3,6 +3,8 @@ package goLuksSuspend
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +18,7 @@ import (
 	"syscall"
 
 	"github.com/guns/golibs/errutil"
+	"github.com/howeyc/gopass"
 )
 
 type Cryptdevice struct {
@@ -121,11 +124,34 @@ func (cd *Cryptdevice) Suspended() bool {
 }
 
 func (cd *Cryptdevice) Resume(stdin io.Reader) error {
-	cmd := exec.Command("/usr/bin/cryptsetup", "--tries=1", "luksResume", cd.Name)
-	cmd.Stdin = stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return Run(cmd)
+
+	reader := bufio.NewReader(os.Stdin)
+
+	cryptsetupResume := exec.Command("/usr/bin/cryptsetup", "--tries=1", "luksResume", cd.Name)
+	cryptsetupResume.Stderr = os.Stderr
+	cryptsetupResume.Stdout = os.Stdout
+
+	fmt.Print("Please provide the password to unlock the cryptdevice: ")
+	bytepas, _ := gopass.GetPasswd()
+	LuksPWD := string(bytepas)
+
+	fmt.Print("REMEMBER: You need to enter the password before sleeping again\n\nPress 'Y' + <ENTER> if the cryptdevice '" + cd.Name + "' is Yubikey protected\nIf not press <ENTER>\n")
+	input, _ := reader.ReadString('\n')
+	input = strings.ToLower(strings.Trim(input, " \r\n"))
+	if strings.Compare(input, "y") == 0 {
+		fmt.Print("Touch the Yubikey....\n")
+
+		sum := sha256.Sum256([]byte(LuksPWD))
+		sumPWD := hex.EncodeToString(sum[:])
+
+		bufferHMAC, _ := exec.Command("/usr/bin/ykchalresp", "-1", sumPWD).Output()
+
+		//ADD SHAPWD TO HMAC
+		LuksPWD = sumPWD + string(bufferHMAC)
+	}
+	cryptsetupResume.Stdin = strings.NewReader(LuksPWD + "\n")
+
+	return Run(cryptsetupResume)
 }
 
 var errNoKeyfile = errors.New("no keyfile")
